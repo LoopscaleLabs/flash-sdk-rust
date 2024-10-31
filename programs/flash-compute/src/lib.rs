@@ -18,8 +18,8 @@ pub const FLASH_PROGRAM: Pubkey = pubkey!("FTN6rgbaaxwT8mpRuC55EFTwpHB3BwnHJ91Lq
 pub mod flash_compute {
     use super::*;
 
-    pub fn get_pool_token_prices(
-        ctx: Context<GetPoolTokenPrices>,
+    pub fn get_pool_token_prices<'info>(
+        ctx: Context<'_, '_, 'info, 'info, GetPoolTokenPrices<'info>>,
     ) -> Result<(u64, u64)> {
         let pool = &ctx.accounts.pool;
         let mut custody_details: Box<Vec<CustodyDetails>> = Box::new(Vec::new());

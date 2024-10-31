@@ -16,9 +16,9 @@ cpi = ["no-entrypoint"]
 default = []
 
 [dependencies]
-anchor-lang = "0.28.0"
-solana-program = "~1.16.18"
-anchor-spl = "0.28.0"
+anchor-lang = "0.30.1"
+solana-program = "=1.18.17"
+anchor-spl = "0.30.1"
 num-traits = "0.2.15"
 
 
