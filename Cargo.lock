@@ -997,6 +997,8 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "num-traits",
+ "pyth-sdk-solana",
+ "pyth-solana-receiver-sdk",
  "solana-program 1.18.17",
 ]
 
