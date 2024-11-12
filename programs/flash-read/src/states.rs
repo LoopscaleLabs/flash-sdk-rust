@@ -407,7 +407,11 @@ impl Market {
             Ok(Position {
                 update_time: self.collective_position.update_time,
                 entry_price: if self.collective_position.size_amount > 0 {
-                    self.collective_position.average_entry_price
+                    if self.collective_position.average_entry_price.price == 0 {
+                        OraclePrice::new(0, self.collective_position.average_entry_price.exponent)
+                    } else {
+                        self.collective_position.average_entry_price
+                    }
                 } else {
                     OraclePrice::new(0, self.collective_position.average_entry_price.exponent)
                 },
