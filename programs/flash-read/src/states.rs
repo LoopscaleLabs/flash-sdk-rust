@@ -1,7 +1,6 @@
+use crate::{error::CompError, math};
 use anchor_lang::prelude::*;
 use core::cmp::Ordering;
-use crate::{error::CompError, math};
-
 
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Default, Debug)]
 pub struct Permissions {
@@ -34,10 +33,10 @@ pub struct Perpetuals {
     pub permissions: Permissions,
     pub pools: Vec<Pubkey>,
     pub collections: Vec<Pubkey>,
-    
+
     pub voltage_multiplier: VoltageMultiplier,
     // discounts have implied RATE_DECIMALS
-    pub trading_discount: [u64; 6], 
+    pub trading_discount: [u64; 6],
     pub referral_rebate: [u64; 6],
     pub referral_discount: u64,
     pub inception_time: i64,
@@ -45,7 +44,7 @@ pub struct Perpetuals {
     pub transfer_authority_bump: u8,
     pub perpetuals_bump: u8,
     pub trade_limit: u16,
-    pub rebate_limit_usd: u32
+    pub rebate_limit_usd: u32,
 }
 
 impl Perpetuals {
@@ -123,13 +122,10 @@ impl OraclePrice {
     }
 
     pub fn checked_sub(&self, other: &OraclePrice) -> Result<OraclePrice> {
-        require!(
-            self.exponent == other.exponent,
-            CompError::ExponentMismatch
-        );
+        require!(self.exponent == other.exponent, CompError::ExponentMismatch);
         Ok(OraclePrice::new(
-            math::checked_sub(self.price, other.price)?, 
-            self.exponent
+            math::checked_sub(self.price, other.price)?,
+            self.exponent,
         ))
     }
 
@@ -159,7 +155,7 @@ pub struct OracleParams {
     pub oracle_type: OracleType,
     pub max_divergence_bps: u64,
     pub max_conf_bps: u64,
-    pub max_price_age_sec: u64, 
+    pub max_price_age_sec: u64,
 }
 
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Default, Debug)]
@@ -187,7 +183,7 @@ pub struct Pool {
     pub lp_mint: Pubkey,
     pub oracle_authority: Pubkey,
     pub staked_lp_vault: Pubkey, // set in init_staking
-    pub reward_custody: Pubkey, // set in init_staking
+    pub reward_custody: Pubkey,  // set in init_staking
     pub custodies: Vec<Pubkey>,
     pub ratios: Vec<TokenRatios>,
     pub markets: Vec<Pubkey>,
@@ -200,7 +196,7 @@ pub struct Pool {
     pub staked_lp_vault_bump: u8,
     pub vp_volume_factor: u8,
     pub padding: [u8; 4],
-    pub staking_fee_boost_bps: [u64; 6], 
+    pub staking_fee_boost_bps: [u64; 6],
     pub compounding_mint: Pubkey,
     pub compounding_lp_vault: Pubkey,
     pub compounding_stats: CompoundingStats,
@@ -217,8 +213,8 @@ pub struct CustodyDetails {
     pub trade_spread_min: u64,
     pub trade_spread_max: u64,
     pub delay_seconds: i64,
-    pub min_price: OraclePrice, 
-    pub max_price: OraclePrice
+    pub min_price: OraclePrice,
+    pub max_price: OraclePrice,
 }
 
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Debug)]
@@ -252,7 +248,7 @@ pub struct Fees {
 pub struct RatioFees {
     pub min_fee: u64,
     pub target_fee: u64,
-    pub max_fee: u64
+    pub max_fee: u64,
 }
 
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Default, Debug)]
@@ -279,16 +275,14 @@ pub struct FeesStats {
     pub protocol_fee: u64,
 }
 
-
-
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Default, Debug)]
 pub struct PricingParams {
-    pub trade_spread_min: u64, // in 100th of bps 
-    pub trade_spread_max: u64, // in 100th of bps 
-    pub swap_spread: u64, // BPS_DECIMALS
+    pub trade_spread_min: u64,     // in 100th of bps
+    pub trade_spread_max: u64,     // in 100th of bps
+    pub swap_spread: u64,          // BPS_DECIMALS
     pub min_initial_leverage: u64, // BPS_DECIMALS
     pub max_initial_leverage: u64, // BPS_DECIMALS
-    pub max_leverage: u64, // BPS_DECIMALS
+    pub max_leverage: u64,         // BPS_DECIMALS
     pub min_collateral_usd: u64,
     pub delay_seconds: i64,
     pub max_utilization: u64, // BPS_DECIMALS
@@ -324,7 +318,7 @@ pub struct Custody {
     pub is_stable: bool,
     pub depeg_adjustment: bool,
     pub is_virtual: bool,
-    pub distribute_rewards: bool,  // Flag to initialise fee distribution
+    pub distribute_rewards: bool, // Flag to initialise fee distribution
     pub oracle: OracleParams,
     pub pricing: PricingParams,
     pub permissions: Permissions,
