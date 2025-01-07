@@ -395,8 +395,8 @@ pub struct Market {
     pub permissions: MarketPermissions,
     pub open_interest: u64,
     pub collective_position: PositionStats,
-    pub target_custody_id: usize,
-    pub collateral_custody_id: usize,
+    pub target_custody_id: u64,
+    pub collateral_custody_id: u64,
     pub bump: u8,
 }
 
