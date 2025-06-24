@@ -10,4 +10,6 @@ pub enum CompError {
     ExponentMismatch,
     #[msg("Invalid oracle price")]
     InvalidOraclePrice,
+    #[msg("Custody is not supported")]
+    UnsupportedCustody,
 }

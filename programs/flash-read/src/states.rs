@@ -440,6 +440,13 @@ impl Pool {
 
         Ok(price)
     }
+
+    pub fn get_custody_id(&self, custody: &Pubkey) -> Result<usize> {
+        self.custodies
+            .iter()
+            .position(|&c| c == *custody)
+            .ok_or_else(|| CompError::UnsupportedCustody.into())
+    }
 }
 
 #[derive(Clone, AnchorSerialize, AnchorDeserialize, Debug)]
@@ -704,8 +711,10 @@ pub struct Market {
     pub permissions: MarketPermissions,
     pub open_interest: u64,
     pub collective_position: PositionStats,
-    pub target_custody_id: usize,
-    pub collateral_custody_id: usize,
+    pub target_custody_uid: u8,
+    pub padding: [u8; 7],
+    pub collateral_custody_uid: u8,
+    pub padding2: [u8; 7],
     pub bump: u8,
 }
 

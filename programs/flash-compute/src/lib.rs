@@ -64,66 +64,68 @@ pub mod flash_compute {
         for (idx, &market) in pool.markets.iter().enumerate() {
             require_keys_eq!(ctx.remaining_accounts[(pool.custodies.len() * 2) + idx].key(), market);
             let market = Box::new(Account::<Market>::try_from(&ctx.remaining_accounts[(pool.custodies.len() * 2) + idx])?);
+            let target_custody_id = pool.get_custody_id(&market.target_custody)?;
+            let collateral_custody_id = pool.get_custody_id(&market.collateral_custody)?;
             // Get the collective position against the pool
             let position = Box::new(market.get_collective_position()?);
             if market.side == Side::Short {
                 let exit_price = OraclePrice {
                     price: math::checked_add(
-                        custody_details[market.target_custody_id].max_price.price,
+                        custody_details[target_custody_id].max_price.price,
                         math::checked_decimal_ceil_mul(
-                            custody_details[market.target_custody_id].max_price.price,
-                            custody_details[market.target_custody_id].max_price.exponent,
-                            custody_details[market.target_custody_id].trade_spread_max,
+                            custody_details[target_custody_id].max_price.price,
+                            custody_details[target_custody_id].max_price.exponent,
+                            custody_details[target_custody_id].trade_spread_max,
                             -6, // Spread is in 100th of a bip
-                            custody_details[market.target_custody_id].max_price.exponent,
+                            custody_details[target_custody_id].max_price.exponent,
                         )?,
                     )?,
-                    exponent: custody_details[market.target_custody_id].max_price.exponent,
+                    exponent: custody_details[target_custody_id].max_price.exponent,
                 };
                 pool_equity = if exit_price < position.entry_price {
                     // Shorts are in collective profit
                      pool_equity.saturating_sub(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[market.collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
                     ))
                 } else {
                     // Shorts are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[market.collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
                     )).unwrap()
                 };
             } else {
                 let spread = math::checked_decimal_mul(
-                    custody_details[market.target_custody_id].min_price.price,
-                    custody_details[market.target_custody_id].min_price.exponent,
-                    custody_details[market.target_custody_id].trade_spread_min,
+                    custody_details[target_custody_id].min_price.price,
+                    custody_details[target_custody_id].min_price.exponent,
+                    custody_details[target_custody_id].trade_spread_min,
                     -6, // Spread is in 100th of a bip
-                    custody_details[market.target_custody_id].min_price.exponent,
+                    custody_details[target_custody_id].min_price.exponent,
                 )?;
     
-                let price = if spread < custody_details[market.target_custody_id].min_price.price {
-                    math::checked_sub(custody_details[market.target_custody_id].min_price.price, spread)?
+                let price = if spread < custody_details[target_custody_id].min_price.price {
+                    math::checked_sub(custody_details[target_custody_id].min_price.price, spread)?
                 } else {
                     0
                 };
 
                 let exit_price = OraclePrice {
                     price,
-                    exponent: custody_details[market.target_custody_id].min_price.exponent,
+                    exponent: custody_details[target_custody_id].min_price.exponent,
                 };
 
                 pool_equity = if exit_price > position.entry_price {
                     // Longs are in collective profit
                     pool_equity.saturating_sub(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[market.collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
                     ))
                 } else {
                     // Longs are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[market.collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
                     )).unwrap()
                 };
 
@@ -199,7 +201,7 @@ pub mod flash_compute {
         )?;
 
         if market.correlation && market.side == Side::Long {
-            let collateral_amount = if market.target_custody_id == market.collateral_custody_id {
+            let collateral_amount = if market.target_custody_uid == market.collateral_custody_uid {
                 position.collateral_amount
             } else {
                 let swap_price = collateral_price.checked_div(&target_price)?;
