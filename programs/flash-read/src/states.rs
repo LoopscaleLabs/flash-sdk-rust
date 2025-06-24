@@ -208,7 +208,7 @@ impl Pool {
     pub const LEN: usize = 8 + 64 + std::mem::size_of::<Pool>();
 }
 
-#[derive(Clone, AnchorSerialize, AnchorDeserialize, Debug)]
+#[derive(Clone, AnchorSerialize, AnchorDeserialize, Debug, Copy)]
 pub struct CustodyDetails {
     pub trade_spread_min: u64,
     pub trade_spread_max: u64,
