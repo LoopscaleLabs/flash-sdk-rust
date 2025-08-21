@@ -23,7 +23,7 @@ pub mod flash_compute {
     ) -> Result<(u64, u64)> {
         let pool = &ctx.accounts.pool;
         let mut custody_details: Box<Vec<CustodyDetails>> = Box::new(Vec::new());
-        let mut pool_equity: u128 = 0;
+        let mut pool_equity: u64 = 0;
 
         // Computing the raw AUM of the pool
         for (idx, &custody) in pool.custodies.iter().enumerate() {
@@ -54,7 +54,7 @@ pub mod flash_compute {
 
             let token_amount_usd =
                 custody_details[idx].min_price.get_asset_amount_usd(custody.assets.owned, custody.decimals)?;
-            pool_equity = math::checked_add(pool_equity, token_amount_usd as u128)?;
+            pool_equity = math::checked_add(pool_equity, token_amount_usd)?;
 
         }
 
@@ -85,14 +85,14 @@ pub mod flash_compute {
                 pool_equity = if exit_price < position.entry_price {
                     // Shorts are in collective profit
                      pool_equity.saturating_sub(std::cmp::min(
-                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
+                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
                     ))
                 } else {
                     // Shorts are in collective loss
                     pool_equity.checked_add(std::cmp::min(
-                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
+                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
                     )).unwrap()
                 };
             } else {
@@ -118,14 +118,14 @@ pub mod flash_compute {
                 pool_equity = if exit_price > position.entry_price {
                     // Longs are in collective profit
                     pool_equity.saturating_sub(std::cmp::min(
-                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)? as u128
+                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
                     ))
                 } else {
                     // Longs are in collective loss
                     pool_equity.checked_add(std::cmp::min(
-                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)? as u128,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)? as u128
+                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
                     )).unwrap()
                 };
 

@@ -331,26 +331,37 @@ pub struct Pool {
     pub inception_time: i64,
     pub lp_mint: Pubkey,
     pub oracle_authority: Pubkey,
-    pub staked_lp_vault: Pubkey, // set in init_staking
-    pub reward_custody: Pubkey, // set in init_staking
+    pub staked_lp_vault: Pubkey,
+    pub reward_custody: Pubkey,
     pub custodies: Vec<Pubkey>,
     pub ratios: Vec<TokenRatios>,
     pub markets: Vec<Pubkey>,
-    pub max_aum_usd: u128,
-    pub aum_usd: u128, // For persistnace
+    pub max_aum_usd: u64,
+    pub buffer: u64,
+    pub raw_aum_usd: u64,
+    pub equity_usd: u64,
     pub total_staked: StakeStats,
     pub staking_fee_share_bps: u64,
     pub bump: u8,
     pub lp_mint_bump: u8,
     pub staked_lp_vault_bump: u8,
     pub vp_volume_factor: u8,
-    pub padding: [u8; 4],
-    pub staking_fee_boost_bps: [u64; 6], 
+    pub unique_custody_count: u8,
+    pub padding: [u8; 3],
+    pub staking_fee_boost_bps: [u64; 6],
     pub compounding_mint: Pubkey,
     pub compounding_lp_vault: Pubkey,
     pub compounding_stats: CompoundingStats,
     pub compounding_mint_bump: u8,
     pub compounding_lp_vault_bump: u8,
+
+    pub min_lp_price_usd: u64,
+    pub max_lp_price_usd: u64,
+
+    pub lp_price: u64,
+    pub compounding_lp_price: u64,
+    pub last_updated_timestamp: i64,
+    pub padding2: [u8; 8],
 }
 
 impl Pool {
