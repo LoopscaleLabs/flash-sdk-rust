@@ -12,7 +12,7 @@ declare_id!("Fcmp5ZQ1wR5swZ87aRQyHfUiHYxrfrRVhCWrV2yYA6QG");
 pub const FLASH_PROGRAM: Pubkey = pubkey!("FLASH6Lo6h3iasJKWDs2F8TkW2UKf3s15C8PMGuVfgBn");
 
 #[cfg(not(feature = "mainnet"))]
-pub const FLASH_PROGRAM: Pubkey = pubkey!("FTN6rgbaaxwT8mpRuC55EFTwpHB3BwnHJ91Lqv4ZVCfW");
+pub const FLASH_PROGRAM: Pubkey = pubkey!("FTPP4jEWW1n8s2FEccwVfS9KCPjpndaswg7Nkkuz4ER4");
 
 #[program]
 pub mod flash_compute {
@@ -22,7 +22,7 @@ pub mod flash_compute {
         ctx: Context<GetPoolTokenPrices>,
     ) -> Result<(u64, u64)> {
         let pool = &ctx.accounts.pool;
-        let mut custody_details: Box<Vec<CustodyDetails>> = Box::new(Vec::new());
+        let mut custody_prices: Vec<OraclePrice> = Vec::new();
         let mut pool_equity: u64 = 0;
 
         // Computing the raw AUM of the pool
@@ -38,22 +38,13 @@ pub mod flash_compute {
 
             let pyth_price = Account::<PriceUpdateV2>::try_from(&ctx.remaining_accounts[oracle_idx])?;
 
-            custody_details.push(CustodyDetails { 
-                trade_spread_min: custody.pricing.trade_spread_min,
-                trade_spread_max: custody.pricing.trade_spread_max,
-                delay_seconds: custody.pricing.delay_seconds,
-                min_price: OraclePrice {
+            custody_prices.push(OraclePrice {
                     price: pyth_price.price_message.price as u64,
                     exponent: pyth_price.price_message.exponent as i32,
-                },
-                max_price: OraclePrice {
-                    price: pyth_price.price_message.price as u64,
-                    exponent: pyth_price.price_message.exponent as i32,
-                },
             });
 
             let token_amount_usd =
-                custody_details[idx].min_price.get_asset_amount_usd(custody.assets.owned, custody.decimals)?;
+                custody_prices[idx].get_asset_amount_usd(custody.assets.owned, custody.decimals)?;
             pool_equity = math::checked_add(pool_equity, token_amount_usd)?;
 
         }
@@ -68,64 +59,35 @@ pub mod flash_compute {
             let collateral_custody_id = pool.get_custody_id(&market.collateral_custody)?;
             // Get the collective position against the pool
             let position = Box::new(market.get_collective_position()?);
+            pool_equity = pool_equity.saturating_sub(position.collateral_usd);
+            let exit_price = custody_prices[target_custody_id];
             if market.side == Side::Short {
-                let exit_price = OraclePrice {
-                    price: math::checked_add(
-                        custody_details[target_custody_id].max_price.price,
-                        math::checked_decimal_ceil_mul(
-                            custody_details[target_custody_id].max_price.price,
-                            custody_details[target_custody_id].max_price.exponent,
-                            custody_details[target_custody_id].trade_spread_max,
-                            -6, // Spread is in 100th of a bip
-                            custody_details[target_custody_id].max_price.exponent,
-                        )?,
-                    )?,
-                    exponent: custody_details[target_custody_id].max_price.exponent,
-                };
                 pool_equity = if exit_price < position.entry_price {
                     // Shorts are in collective profit
                      pool_equity.saturating_sub(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
                     ))
                 } else {
                     // Shorts are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
                     )).unwrap()
                 };
             } else {
-                let spread = math::checked_decimal_mul(
-                    custody_details[target_custody_id].min_price.price,
-                    custody_details[target_custody_id].min_price.exponent,
-                    custody_details[target_custody_id].trade_spread_min,
-                    -6, // Spread is in 100th of a bip
-                    custody_details[target_custody_id].min_price.exponent,
-                )?;
-    
-                let price = if spread < custody_details[target_custody_id].min_price.price {
-                    math::checked_sub(custody_details[target_custody_id].min_price.price, spread)?
-                } else {
-                    0
-                };
-
-                let exit_price = OraclePrice {
-                    price,
-                    exponent: custody_details[target_custody_id].min_price.exponent,
-                };
 
                 pool_equity = if exit_price > position.entry_price {
                     // Longs are in collective profit
                     pool_equity.saturating_sub(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
                     ))
                 } else {
                     // Longs are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_details[collateral_custody_id].min_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
                     )).unwrap()
                 };
 
@@ -171,20 +133,6 @@ pub mod flash_compute {
         let market = &ctx.accounts.market;
         let target_custody = &ctx.accounts.target_custody;
         let collateral_custody = &ctx.accounts.collateral_custody;
-        
-        let pyth_price = Account::<PriceUpdateV2>::try_from(&ctx.accounts.collateral_oracle_account)?;
-
-        let collateral_price = OraclePrice {
-            price: math::checked_sub(pyth_price.price_message.price as u64, pyth_price.price_message.conf)?,
-            exponent: pyth_price.price_message.exponent as i32,
-        };
-
-        let pyth_price = Account::<PriceUpdateV2>::try_from(&ctx.accounts.target_oracle_account)?;
-
-        let target_price = OraclePrice {
-            price: math::checked_sub(pyth_price.price_message.price as u64, pyth_price.price_message.conf)?,
-            exponent: pyth_price.price_message.exponent as i32,
-        };
     
         let liabilities_usd = math::checked_add(
             math::checked_add(
@@ -200,79 +148,46 @@ pub mod flash_compute {
             )?,
         )?;
 
-        if market.correlation && market.side == Side::Long {
-            let collateral_amount = if market.target_custody_uid == market.collateral_custody_uid {
-                position.collateral_amount
+        if position.collateral_usd >= liabilities_usd {
+            // Position is nominally solvent and shall be liqudaited in case of loss
+            let mut price_diff_loss = OraclePrice::new(
+                math::checked_as_u64(math::checked_div(
+                    math::checked_mul(
+                        math::checked_sub(position.collateral_usd, liabilities_usd)? as u128,
+                        math::checked_pow(10_u128, (position.size_decimals + 3) as usize)?,
+                    )?,
+                    position.size_amount as u128,
+                )?)?,
+                -(Perpetuals::RATE_DECIMALS as i32),
+            ).scale_to_exponent(position.entry_price.exponent)?;
+            if market.side == Side::Long {
+                // For Longs, loss implies price drop
+                price_diff_loss.price = position.entry_price.price.saturating_sub(price_diff_loss.price);
             } else {
-                let swap_price = collateral_price.checked_div(&target_price)?;
-                math::checked_decimal_mul(
-                    position.collateral_amount,
-                    -(collateral_custody.decimals as i32),
-                    swap_price.price,
-                    swap_price.exponent,
-                    -(target_custody.decimals as i32),
-                )?
-            };
-                // For Correlated Long Markets, if notional size value is assumed to correspond to liabilities then current size vlaue corresponds to assets 
-                // Liq Price = (size_usd + liabilities_usd) / (size_amount + collateral_amount) subject to constraints
-                let liq_price = OraclePrice::new(
-                    math::checked_as_u64(math::checked_div(
-                        math::checked_mul(
-                            math::checked_add(position.size_usd, liabilities_usd)? as u128,
-                            math::checked_pow(10_u128, (position.size_decimals + 3) as usize)?, // USD to Rate decimals for granularity 
-                        )?,
-                        math::checked_add(position.size_amount, collateral_amount)? as u128,
-                    )?)?,
-                    -(Perpetuals::RATE_DECIMALS as i32),
-                );
-                Ok(liq_price.scale_to_exponent(position.entry_price.exponent)?)
-        //  } else if market.correlation && market.side == Side::Short {
-                // Invalid combination of market side and correlation as anti-correlated short markets do not exist 
-        } else {
-            // For uncorrelated markets, assume assets_usd corresponding to collateral value to be constant
-            let assets_usd = collateral_price.get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?;
-
-            if assets_usd >= liabilities_usd {
-                // Position is nominally solvent and shall be liqudaited in case of loss
-                let mut price_diff_loss = OraclePrice::new(
-                    math::checked_as_u64(math::checked_div(
-                        math::checked_mul(
-                            math::checked_sub(assets_usd, liabilities_usd)? as u128,
-                            math::checked_pow(10_u128, (position.size_decimals + 3) as usize)?,
-                        )?,
-                        position.size_amount as u128,
-                    )?)?,
-                    -(Perpetuals::RATE_DECIMALS as i32),
-                ).scale_to_exponent(position.entry_price.exponent)?;
-                if market.side == Side::Long {
-                    // For Longs, loss implies price drop
-                    price_diff_loss.price = position.entry_price.price.saturating_sub(price_diff_loss.price);
-                } else {
-                    // For Shorts, loss implies price rise
-                    price_diff_loss.price = position.entry_price.price.saturating_add(price_diff_loss.price);
-                }
-                Ok(price_diff_loss)
-            } else {
-                // Position is nominally insolvent and shall be liqudaited with profit to cover outstanding liabilities
-                let mut price_diff_profit = OraclePrice::new(
-                    math::checked_as_u64(math::checked_div(
-                        math::checked_mul(
-                            math::checked_sub(liabilities_usd, assets_usd)? as u128,
-                            math::checked_pow(10_u128, (position.size_decimals + 3) as usize)?,
-                        )?,
-                        position.size_amount as u128,
-                    )?)?,
-                    -(Perpetuals::RATE_DECIMALS as i32),
-                ).scale_to_exponent(position.entry_price.exponent)?;
-                if market.side == Side::Long {
-                    // For Longs, profit implies price rise
-                    price_diff_profit.price = position.entry_price.price.saturating_add(price_diff_profit.price);
-                } else {
-                    // For Shorts, profit implies price drop
-                    price_diff_profit.price = position.entry_price.price.saturating_sub(price_diff_profit.price);
-                }
-                Ok(price_diff_profit)
+                // For Shorts, loss implies price rise
+                price_diff_loss.price = position.entry_price.price.saturating_add(price_diff_loss.price);
             }
+            Ok(price_diff_loss)
+        } else {
+            // Position is nominally insolvent and shall be liqudaited with profit to cover outstanding liabilities
+            let mut price_diff_profit = OraclePrice::new(
+                math::checked_as_u64(math::checked_div(
+                    math::checked_mul(
+                        math::checked_sub(liabilities_usd, position.collateral_usd)? as u128,
+                        math::checked_pow(10_u128, (position.size_decimals + 3) as usize)?,
+                    )?,
+                    position.size_amount as u128,
+                )?)?,
+                -(Perpetuals::RATE_DECIMALS as i32),
+            ).scale_to_exponent(position.entry_price.exponent)?;
+            if market.side == Side::Long {
+                // For Longs, profit implies price rise
+                price_diff_profit.price = position.entry_price.price.saturating_add(price_diff_profit.price);
+            } else {
+                // For Shorts, profit implies price drop
+                price_diff_profit.price = position.entry_price.price.saturating_sub(price_diff_profit.price);
+            }
+            Ok(price_diff_profit)
         }
     }
 }

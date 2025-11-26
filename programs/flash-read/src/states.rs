@@ -361,7 +361,9 @@ pub struct Pool {
     pub lp_price: u64,
     pub compounding_lp_price: u64,
     pub last_updated_timestamp: i64,
-    pub padding2: [u8; 8],
+    pub fees_obligation_usd: u64,
+    pub rebate_obligation_usd: u64,
+    pub threshold_usd: u64,
 }
 
 impl Pool {
@@ -458,15 +460,6 @@ impl Pool {
             .position(|&c| c == *custody)
             .ok_or_else(|| CompError::UnsupportedCustody.into())
     }
-}
-
-#[derive(Clone, AnchorSerialize, AnchorDeserialize, Debug)]
-pub struct CustodyDetails {
-    pub trade_spread_min: u64,
-    pub trade_spread_max: u64,
-    pub delay_seconds: i64,
-    pub min_price: OraclePrice, 
-    pub max_price: OraclePrice
 }
 
 #[derive(Copy, Clone, PartialEq, AnchorSerialize, AnchorDeserialize, Debug)]
@@ -773,7 +766,7 @@ pub struct Position {
     pub locked_usd: u64,
     pub collateral_amount: u64,
     pub collateral_usd: u64,
-    pub unsettled_amount: u64, // Used for position delta accounting
+    pub unsettled_amount: u64,
     pub unsettled_fees_usd: u64,
     pub cumulative_lock_fee_snapshot: u128,
     pub take_profit_price: OraclePrice,
