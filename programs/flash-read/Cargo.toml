@@ -17,10 +17,7 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 default = []
 
 [dependencies]
-anchor-lang = { version = "=0.31.0", features = [
-    "init-if-needed",
-    "event-cpi",
-] }
+anchor-lang = { version = "0.31.0", features = ["init-if-needed", "event-cpi"] }
 bytemuck = { version = "1.4.0", features = ["derive", "min_const_generics"] }
 solana-program = "2.2.1"
 anchor-spl = "0.31.0"
