@@ -84,6 +84,7 @@ pub struct CustomOracle {
     pub conf: u64,
     pub ema: u64,
     pub publish_time: i64,
+    pub ext_oracle_account: Pubkey,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, AnchorSerialize, AnchorDeserialize, Default, Debug)]

@@ -126,6 +126,114 @@ pub mod flash_compute {
         Ok((sflp_price_usd, flp_price))
     }
 
+    pub fn get_realtime_pool_token_prices(
+        ctx: Context<GetRealtimePoolTokenPrices>,
+    ) -> Result<(u64, u64)> {
+        let pool = &ctx.accounts.pool;
+        let mut custody_prices: Vec<OraclePrice> = Vec::new();
+        let mut pool_equity: u64 = 0;
+
+        // Computing the raw AUM of the pool
+        for (idx, &custody) in pool.custodies.iter().enumerate() {
+
+            require_keys_eq!(ctx.remaining_accounts[idx].key(), custody);
+            let custody = Box::new(Account::<Custody>::try_from(&ctx.remaining_accounts[idx])?);
+            let oracle_idx = idx + pool.custodies.len();  
+            if oracle_idx >= ctx.remaining_accounts.len() {
+                return Err(ProgramError::NotEnoughAccountKeys.into());
+            }
+            require_keys_eq!(ctx.remaining_accounts[oracle_idx].key(), custody.oracle.ext_oracle_account);
+
+            let price = Account::<CustomOracle>::try_from(&ctx.remaining_accounts[oracle_idx])?;
+
+            custody_prices.push(OraclePrice {
+                    price: price.price as u64,
+                    exponent: price.expo as i32,
+            });
+
+            let token_amount_usd =
+                custody_prices[idx].get_asset_amount_usd(custody.assets.owned, custody.decimals)?;
+            pool_equity = math::checked_add(pool_equity, token_amount_usd)?;
+
+        }
+
+        pool_equity = pool_equity.saturating_sub(math::checked_add(pool.fees_obligation_usd, pool.rebate_obligation_usd)?);
+
+        // Computing the unrealsied PnL pending against the pool
+
+        
+        for (idx, &market) in pool.markets.iter().enumerate() {
+            require_keys_eq!(ctx.remaining_accounts[(pool.custodies.len() * 2) + idx].key(), market);
+            let market = Box::new(Account::<Market>::try_from(&ctx.remaining_accounts[(pool.custodies.len() * 2) + idx])?);
+            let target_custody_id = pool.get_custody_id(&market.target_custody)?;
+            let collateral_custody_id = pool.get_custody_id(&market.collateral_custody)?;
+            // Get the collective position against the pool
+            let position = Box::new(market.get_collective_position()?);
+            pool_equity = pool_equity.saturating_sub(position.collateral_usd);
+            let exit_price = custody_prices[target_custody_id];
+            pool_equity = if market.side == Side::Short {
+                if exit_price < position.entry_price {
+                    // Shorts are in collective profit
+                     pool_equity.saturating_sub(std::cmp::min(
+                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
+                    ))
+                } else {
+                    // Shorts are in collective loss
+                    pool_equity.checked_add(std::cmp::min(
+                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        position.collateral_usd
+                    )).unwrap()
+                }
+            } else {
+                if exit_price > position.entry_price {
+                    // Longs are in collective profit
+                    pool_equity.saturating_sub(std::cmp::min(
+                        exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.locked_amount, position.locked_decimals)?
+                    ))
+                } else {
+                    // Longs are in collective loss
+                    pool_equity.checked_add(std::cmp::min(
+                        position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
+                        position.collateral_usd
+                    )).unwrap()
+                }
+
+            };
+        }
+
+        let lp_supply = ctx.accounts.lp_token_mint.supply;
+
+        let sflp_price_usd = math::checked_decimal_div(
+            math::checked_as_u64(pool_equity)?,
+            -(Perpetuals::USD_DECIMALS as i32),
+            lp_supply,
+            -(Perpetuals::LP_DECIMALS as i32),
+            -(Perpetuals::USD_DECIMALS as i32),
+        )?;
+
+        let compounding_factor = math::checked_decimal_div(
+            pool.compounding_stats.active_amount, 
+            -(Perpetuals::LP_DECIMALS as i32), 
+            pool.compounding_stats.total_supply,
+            -(Perpetuals::LP_DECIMALS as i32),
+            -(Perpetuals::LP_DECIMALS as i32),
+        )?;
+
+        let flp_price = math::checked_decimal_mul(
+            sflp_price_usd,
+            -(Perpetuals::USD_DECIMALS as i32),
+            compounding_factor,
+            -(Perpetuals::LP_DECIMALS as i32),
+            -(Perpetuals::USD_DECIMALS as i32),
+        )?;
+
+        msg!("SFLP Price: {}, FLP Price: {}", sflp_price_usd, flp_price);
+
+        Ok((sflp_price_usd, flp_price))
+    }
+
     pub fn get_liquidation_price(
         ctx: Context<GetLiquidationPrice>,
     ) -> Result<OraclePrice> {
@@ -221,6 +329,37 @@ pub struct GetPoolTokenPrices<'info> {
     // remaining accounts:
     //   pool.custodies.len() custody accounts (read-only, unsigned)
     //   pool.custodies.len() custody oracles (read-only, unsigned)
+    //   pool.markets.len() market accounts (read-only, unsigned)
+}
+
+#[derive(Accounts)]
+pub struct GetRealtimePoolTokenPrices<'info> {
+    #[account(
+        seeds = [b"perpetuals"],
+        bump = perpetuals.perpetuals_bump,
+        seeds::program = FLASH_PROGRAM,
+    )]
+    pub perpetuals: Box<Account<'info, Perpetuals>>,
+
+    #[account(
+        seeds = [b"pool",
+                 pool.name.as_bytes()],
+        bump = pool.bump,
+        seeds::program = FLASH_PROGRAM,
+    )]
+    pub pool: Box<Account<'info, Pool>>,
+
+    #[account(
+        seeds = [b"lp_token_mint",
+                 pool.key().as_ref()],
+        bump = pool.lp_mint_bump,
+        seeds::program = FLASH_PROGRAM,
+    )]
+    pub lp_token_mint: Box<Account<'info, Mint>>,
+
+    // remaining accounts:
+    //   pool.custodies.len() custody accounts (read-only, unsigned)
+    //   pool.custodies.len() oracles accounts corresponding to custody.int_oracle_accounts (read-only, unsigned)
     //   pool.markets.len() market accounts (read-only, unsigned)
 }
 
