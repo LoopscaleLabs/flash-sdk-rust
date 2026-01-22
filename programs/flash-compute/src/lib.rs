@@ -49,6 +49,8 @@ pub mod flash_compute {
 
         }
 
+        pool_equity = pool_equity.saturating_sub(math::checked_add(pool.fees_obligation_usd, pool.rebate_obligation_usd)?);
+
         // Computing the unrealsied PnL pending against the pool
 
         
@@ -61,8 +63,8 @@ pub mod flash_compute {
             let position = Box::new(market.get_collective_position()?);
             pool_equity = pool_equity.saturating_sub(position.collateral_usd);
             let exit_price = custody_prices[target_custody_id];
-            if market.side == Side::Short {
-                pool_equity = if exit_price < position.entry_price {
+            pool_equity = if market.side == Side::Short {
+                if exit_price < position.entry_price {
                     // Shorts are in collective profit
                      pool_equity.saturating_sub(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
@@ -72,12 +74,11 @@ pub mod flash_compute {
                     // Shorts are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
+                        position.collateral_usd
                     )).unwrap()
-                };
+                }
             } else {
-
-                pool_equity = if exit_price > position.entry_price {
+                if exit_price > position.entry_price {
                     // Longs are in collective profit
                     pool_equity.saturating_sub(std::cmp::min(
                         exit_price.checked_sub(&position.entry_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
@@ -87,9 +88,9 @@ pub mod flash_compute {
                     // Longs are in collective loss
                     pool_equity.checked_add(std::cmp::min(
                         position.entry_price.checked_sub(&exit_price)?.get_asset_amount_usd(position.size_amount, position.size_decimals)?,
-                        custody_prices[collateral_custody_id].get_asset_amount_usd(position.collateral_amount, position.collateral_decimals)?
+                        position.collateral_usd
                     )).unwrap()
-                };
+                }
 
             };
         }
