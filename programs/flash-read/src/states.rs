@@ -221,10 +221,10 @@ impl OraclePrice {
         Ok((factor.scale_to_exponent(-(Perpetuals::BPS_DECIMALS as i32))?.price) as u64)
     }
 
-    fn get_int_oracle_price(
-        custom_price_info: &AccountInfo,
+    fn get_int_oracle_price<'info>(
+        custom_price_info: &'info AccountInfo<'info>,
     ) -> Result<(OraclePrice, OraclePrice, u64, i64)> {
-        let oracle_acc = Account::<CustomOracle>::try_from(custom_price_info)?;
+        let oracle_acc = Account::<'info, CustomOracle>::try_from(custom_price_info)?;
         Ok((
             OraclePrice::new(oracle_acc.price, oracle_acc.expo),
             OraclePrice::new(oracle_acc.ema, oracle_acc.expo),
@@ -234,8 +234,8 @@ impl OraclePrice {
     }
 
     // Returns (min_oracle_price, max_oracle_price, volatility_flag)
-    pub fn fetch_from_oracle(
-        int_oracle_account: &AccountInfo, 
+    pub fn fetch_from_oracle<'info>(
+        int_oracle_account: &'info AccountInfo<'info>, 
         oracle_params: &OracleParams, // from custody.oracle
         current_time: i64,
         is_stable: bool,
@@ -249,7 +249,7 @@ impl OraclePrice {
             oracle_ema_price,
             oracle_conf,
             oracle_timestamp,
-        ) = Self::get_int_oracle_price(int_oracle_account)?;
+        ) = Self::get_int_oracle_price(&int_oracle_account)?;
 
         let price_age_sec = current_time.saturating_sub(oracle_timestamp);
         if price_age_sec > oracle_params.max_price_age_sec as i64 {
